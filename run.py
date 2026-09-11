@@ -30,7 +30,7 @@ def main():
     Base.metadata.create_all(bind=engine)
 
     port = int(os.getenv("PORT", 8000))
-    host = os.getenv("HOST", "127.0.0.1")
+    host = os.getenv("HOST", "0.0.0.0")
 
     print("\n" + "=" * 70)
     print(" [DOC-INTEL] Intelligent Document Extraction & Financial Validation Platform")
