@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ document_name }} — Document Inspection & Verification Audit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <style>
+    .val-banner {
+      padding: 1rem 1.5rem;
+      border-radius: var(--radius-md);
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .val-banner.pass {
+      background: var(--status-pass-bg);
+      border: 1px solid var(--status-pass-border);
+      color: var(--status-pass-text);
+    }
+    .val-banner.fail {
+      background: var(--status-fail-bg);
+      border: 1px solid var(--status-fail-border);
+      color: var(--status-fail-text);
+    }
+    .subtable-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      margin-top: 1.5rem;
+      overflow: hidden;
+    }
+    .subtable-header {
+      padding: 1rem 1.25rem;
+      background: rgba(31, 41, 55, 0.4);
+      font-weight: 600;
+      color: #fff;
+      font-size: 0.95rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .split-layout-container {
+      display: grid;
+      grid-template-columns: 46% 1fr;
+      gap: 1.5rem;
+      align-items: start;
+      transition: all 0.3s ease;
+    }
+    .split-layout-container.no-preview {
+      grid-template-columns: 1fr;
+    }
+    .split-layout-container.no-preview .preview-pane {
+      display: none;
+    }
+    .preview-pane {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      position: sticky;
+      top: 5rem;
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.45);
+    }
+    .preview-pane-header {
+      padding: 0.75rem 1rem;
+      background: rgba(30, 41, 59, 0.7);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .preview-pane-body {
+      padding: 0.6rem;
+      background: #090d16;
+      min-height: 480px;
+    }
+    .preview-iframe {
+      width: 100%;
+      height: 820px;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: #1a202c;
+    }
+    .preview-img {
+      width: 100%;
+      max-height: 820px;
+      object-fit: contain;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+      background: #0b0f19;
+    }
+    @media (max-width: 1100px) {
+      .split-layout-container {
+        grid-template-columns: 1fr;
+      }
+      .preview-pane {
+        position: static;
+        margin-bottom: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+      </div>
+      <span>DocIntel AI <span style="font-size: 0.75rem; font-weight: normal; color: var(--accent-primary); border: 1px solid var(--border-highlight); padding: 0.15rem 0.5rem; border-radius: 9999px; margin-left: 0.4rem;">v{{ version }}</span></span>
+    </div>
+
+    <div class="nav-links">
+      <a href="/" class="nav-link">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Back to Dashboard
+      </a>
+      <a href="/docs" target="_blank" class="nav-link">
+        API Docs
+      </a>
+      <div class="badge-health">
+        <span class="pulse-dot"></span>
+        <span>Service Operational</span>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Document Detail Header -->
+    <div class="detail-header-card">
+      <div class="detail-title-group">
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+          <h1 class="detail-title" style="word-break: break-all;">{{ document_name }}</h1>
+          <span class="badge-type">
+            {% if doc.document_type == 'invoice' %}Invoice
+            {% elif doc.document_type == 'balance_sheet' %}Balance Sheet
+            {% elif doc.document_type == 'profit_and_loss' %}Profit & Loss
+            {% elif doc.document_type == 'cash_flow_statement' %}Cash Flow
+            {% else %}{{ doc.document_type }}
+            {% endif %}
+          </span>
+          <span class="badge-status {% if doc.processing_status == 'PASS' %}pass{% else %}fail{% endif %}">
+            {% if doc.processing_status == 'PASS' %}✓ PIPELINE PASS{% else %}✗ PIPELINE FAILED{% endif %}
+          </span>
+        </div>
+
+        <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; gap: 1.25rem; flex-wrap: wrap; margin-top: 0.4rem;">
+          <span><strong>Format:</strong> {{ doc.file_validation.file_type if doc.file_validation else 'N/A' }}</span>
+          <span><strong>Pages:</strong> {{ doc.file_validation.page_count if doc.file_validation else 1 }}</span>
+          <span><strong>OCR Applied:</strong> {{ 'Yes' if doc.processing_metadata.ocr_used else 'Native Text Engine' }}</span>
+          <span><strong>Processing Latency:</strong> {{ doc.processing_metadata.processing_time_ms }} ms</span>
+          <span><strong>Timestamp:</strong> {{ doc.processing_metadata.processed_at }}</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.75rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">Overall Confidence:</span>
+          <div class="conf-wrapper" style="width: 140px;">
+            <div class="conf-bar" style="height: 8px;">
+              {% set conf_val = doc.overall_confidence or 0.95 %}
+              <div class="conf-fill {% if conf_val < 0.7 %}low{% elif conf_val < 0.88 %}med{% endif %}" style="width: {{ (conf_val * 100) | round(0) }}%;"></div>
+            </div>
+            <span class="conf-text" style="font-size: 0.95rem; color: #fff;">{{ ((conf_val) * 100) | round(0) }}%</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
+          <button id="togglePreviewBtn" class="btn-sm" style="background: rgba(14, 165, 233, 0.15); border-color: #38bdf8; color: #38bdf8;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <span id="togglePreviewText">Hide Source Preview</span>
+          </button>
+          <button id="copyJsonBtn" class="btn-sm" style="background: rgba(99, 102, 241, 0.15); border-color: var(--accent-primary);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copy JSON</span>
+          </button>
+          <button id="downloadJsonBtn" class="btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span>Export JSON</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dual-Pane Split Layout Container -->
+    <div class="split-layout-container" id="splitLayout">
+
+      <!-- Left Pane: Source Document Embedded Viewer -->
+      <div class="preview-pane" id="previewPane">
+        <div class="preview-pane-header">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="font-weight: 600; font-size: 0.88rem; color: #fff;">Source Document</span>
+            <span style="font-size: 0.72rem; color: var(--text-muted); background: var(--bg-surface); padding: 0.1rem 0.4rem; border-radius: 4px; border: 1px solid var(--border-color);">
+              {{ doc.file_validation.file_type if doc.file_validation else 'PDF/Image' }}
+            </span>
+          </div>
+          <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <a href="/raw-file/{{ document_name }}" target="_blank" class="btn-sm" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; text-decoration: none;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+              Open File
+            </a>
+          </div>
+        </div>
+        <div class="preview-pane-body">
+          {% if doc.file_validation and doc.file_validation.file_type in ['image/png', 'image/jpeg', 'image/webp'] %}
+            <img src="/raw-file/{{ document_name }}" alt="Source document preview" class="preview-img">
+          {% else %}
+            <iframe src="/raw-file/{{ document_name }}#toolbar=0" title="Source Document Preview" class="preview-iframe"></iframe>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Right Pane: Extracted Data & Validation Tabs -->
+      <div class="data-pane" id="dataPane">
+
+    <!-- Navigation Tabs -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" data-tab="fieldsTab">
+        Extracted Fields & Grounded Evidence
+      </button>
+      <button class="tab-btn" data-tab="validationsTab">
+        Financial Math Validations ({{ doc.validation.checks | length if doc.validation and doc.validation.checks else 0 }})
+      </button>
+      <button class="tab-btn" data-tab="rawJsonTab">
+        Raw Structured JSON
+      </button>
+    </div>
+
+    <!-- TAB 1: EXTRACTED FIELDS -->
+    <div id="fieldsTab" class="tab-content active">
+
+      <!-- Scalar Fields Grid -->
+      <div class="fields-grid">
+        {% if doc.extracted_data %}
+          {% for field_key, field_obj in doc.extracted_data.items() %}
+            {% if field_key not in ['line_items', 'asset_line_items', 'liability_and_equity_line_items', 'revenue_line_items', 'expense_line_items', 'operating_activities', 'investing_activities', 'financing_activities', 'total_assets', 'total_liabilities', 'total_equity', 'total_capital_and_liabilities', 'revenue', 'operating_profit', 'net_profit', 'operating_cash_flow', 'investing_cash_flow', 'financing_cash_flow', 'net_change_in_cash', 'beginning_cash', 'ending_cash'] %}
+              {% if field_obj is mapping and 'value' in field_obj %}
+                <div class="field-card {% if field_obj.value is none %}missing{% endif %}">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="field-name">{{ field_key | replace('_', ' ') }}</div>
+                    {% if field_obj.confidence %}
+                      <span style="font-size: 0.72rem; font-family: 'JetBrains Mono', monospace; color: var(--text-faint);">
+                        Conf: {{ (field_obj.confidence * 100) | round(0) }}%
+                      </span>
+                    {% endif %}
+                  </div>
+
+                  <div class="field-value {% if field_obj.value is none %}missing{% endif %}">
+                    {% if field_obj.value is not none %}
+                      {{ field_obj.value }}
+                    {% else %}
+                      Not Detected / Not Specified
+                    {% endif %}
+                  </div>
+
+                  {% if field_obj.evidence and field_obj.evidence.source_text %}
+                    <div class="evidence-box">
+                      <div style="font-weight: 600; color: var(--text-muted); font-size: 0.7rem; margin-bottom: 0.15rem;">
+                        Citation [Page {{ field_obj.evidence.page_number }}]:
+                      </div>
+                      "{{ field_obj.evidence.source_text }}"
+                    </div>
+                  {% endif %}
+                </div>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      <!-- Specialized Section: Invoice Line Items -->
+      {% if doc.extracted_data and doc.extracted_data.line_items %}
+        <div class="subtable-card">
+          <div class="subtable-header">
+            <span>Invoice Line Items Breakdown ({{ doc.extracted_data.line_items | length }} items detected)</span>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Validated against Unit Price × Quantity</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Item Description</th>
+                <th style="text-align: right;">Quantity</th>
+                <th style="text-align: right;">Unit Price</th>
+                <th style="text-align: right;">Reported Amount</th>
+                <th style="text-align: right;">Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in doc.extracted_data.line_items %}
+                <tr>
+                  <td style="color: var(--text-faint); font-family: 'JetBrains Mono', monospace;">{{ loop.index }}</td>
+                  <td style="font-weight: 600; color: #fff;">{{ item.description }}</td>
+                  <td style="text-align: right; font-family: 'JetBrains Mono', monospace;">{{ item.quantity }}</td>
+                  <td style="text-align: right; font-family: 'JetBrains Mono', monospace;">{{ item.unit_price }}</td>
+                  <td style="text-align: right; font-weight: 700; color: var(--status-pass-text); font-family: 'JetBrains Mono', monospace;">
+                    {{ item.amount }}
+                  </td>
+                  <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
+                    {{ (item.confidence * 100) | round(0) if item.confidence else 95 }}%
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+      <!-- Specialized Section: Multi-Period Financial Statement Summaries -->
+      {% if doc.extracted_data and doc.extracted_data.periods %}
+        <div class="subtable-card">
+          <div class="subtable-header">
+            <span>Statement Multi-Period Summary Matrix</span>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Periods: {{ doc.extracted_data.periods | join(', ') }}</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Statement Metric</th>
+                {% for period in doc.extracted_data.periods %}
+                  <th style="text-align: right;">{{ period }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for metric_key, metric_title in [
+                ('total_assets', 'Total Assets'),
+                ('total_liabilities', 'Total Liabilities'),
+                ('total_equity', 'Total Equity'),
+                ('total_capital_and_liabilities', 'Total Capital & Liabilities'),
+                ('revenue', 'Total Revenue / Turnover'),
+                ('operating_profit', 'Operating Profit / EBIT'),
+                ('net_profit', 'Net Profit / Net Income'),
+                ('operating_cash_flow', 'Cash from Operating Activities'),
+                ('investing_cash_flow', 'Cash from Investing Activities'),
+                ('financing_cash_flow', 'Cash from Financing Activities'),
+                ('net_change_in_cash', 'Net Increase / (Decrease) in Cash')
+              ] %}
+                {% if doc.extracted_data.get(metric_key) %}
+                  <tr>
+                    <td style="font-weight: 600; color: #fff;">{{ metric_title }}</td>
+                    {% for period in doc.extracted_data.periods %}
+                      {% set p_data = doc.extracted_data[metric_key].get(period) %}
+                      <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600;">
+                        {% if p_data and p_data.value is not none %}
+                          {{ "{:,.2f}".format(p_data.value) if p_data.value is number else p_data.value }}
+                        {% else %}
+                          <span style="color: var(--text-faint);">-</span>
+                        {% endif %}
+                      </td>
+                    {% endfor %}
+                  </tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+    </div>
+
+    <!-- TAB 2: FINANCIAL VALIDATIONS -->
+    <div id="validationsTab" class="tab-content">
+      
+      <!-- Overall Validation Status Banner -->
+      <div class="val-banner {% if doc.validation and doc.validation.overall_status == 'PASS' %}pass{% else %}fail{% endif %}">
+        <div style="font-size: 1.5rem;">
+          {% if doc.validation and doc.validation.overall_status == 'PASS' %}✓{% else %}⚠️{% endif %}
+        </div>
+        <div>
+          <div style="font-weight: 700; font-size: 1.05rem;">
+            Overall Reconciliation Status: {{ doc.validation.overall_status if doc.validation else 'PASS' }}
+          </div>
+          <div style="font-size: 0.85rem; opacity: 0.9; margin-top: 0.2rem;">
+            {% if doc.validation and doc.validation.overall_status == 'PASS' %}
+              All verified mathematical relationships reconciled within allowable numerical tolerance (±0.05).
+            {% else %}
+              One or more accounting equations or mathematical reconciliations failed. Review the audit cards below.
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Issues List if any -->
+      {% if doc.validation and doc.validation.issues and doc.validation.issues | length > 0 %}
+        <div style="margin-bottom: 1.5rem; padding: 1rem 1.25rem; background: rgba(239, 68, 68, 0.08); border-left: 3px solid #ef4444; border-radius: var(--radius-sm);">
+          <div style="font-weight: 700; color: #f87171; font-size: 0.9rem; margin-bottom: 0.4rem;">Discrepancy Notes:</div>
+          <ul style="padding-left: 1.25rem; font-size: 0.85rem; color: #fca5a5;">
+            {% for issue in doc.validation.issues %}
+              <li>{{ issue }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <!-- Validation Checks List -->
+      {% if doc.validation and doc.validation.checks and doc.validation.checks | length > 0 %}
+        {% for check in doc.validation.checks %}
+          <div class="validation-card {% if check.status == 'FAIL' %}fail{% endif %}">
+            <div class="val-header">
+              <div class="val-title">{{ check.name | replace('_', ' ') | title }}</div>
+              <span class="badge-status {% if check.status == 'PASS' %}pass{% elif check.status == 'FAIL' %}fail{% else %}na{% endif %}">
+                {{ check.status }}
+              </span>
+            </div>
+
+            {% if check.description %}
+              <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                {{ check.description }}
+              </div>
+            {% endif %}
+
+            <div class="val-formula">
+              Formula: {{ check.formula }}
+            </div>
+
+            {% if check.operands %}
+              <div class="val-operands">
+                {% for op_key, op_val in check.operands.items() %}
+                  <div>
+                    <span style="color: var(--text-muted); text-transform: uppercase; font-size: 0.72rem; font-weight: 600;">{{ op_key }}:</span>
+                    <strong style="color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">{{ op_val }}</strong>
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
+
+            <div class="val-results">
+              <div>
+                <span style="color: var(--text-muted); font-size: 0.78rem;">Calculated Value:</span>
+                <div style="font-family: 'JetBrains Mono', monospace; color: #fff; font-size: 1.05rem;">
+                  {% if check.calculated_value is not none %}{{ check.calculated_value }}{% else %}N/A{% endif %}
+                </div>
+              </div>
+
+              <div>
+                <span style="color: var(--text-muted); font-size: 0.78rem;">Reported Value:</span>
+                <div style="font-family: 'JetBrains Mono', monospace; color: #fff; font-size: 1.05rem;">
+                  {% if check.reported_value is not none %}{{ check.reported_value }}{% else %}N/A{% endif %}
+                </div>
+              </div>
+
+              <div>
+                <span style="color: var(--text-muted); font-size: 0.78rem;">Variance / Delta:</span>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; {% if check.variance and check.variance > 0.05 %}color: #f87171; font-weight: 700;{% else %}color: var(--status-pass-text);{% endif %}">
+                  {% if check.variance is not none %}{{ check.variance }}{% else %}0.00{% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div style="padding: 2.5rem; text-align: center; color: var(--text-muted); background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+          No explicit mathematical verification checks configured for this document type.
+        </div>
+      {% endif %}
+
+    </div>
+
+    <!-- TAB 3: RAW STRUCTURED JSON -->
+    <div id="rawJsonTab" class="tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Complete API Payload Schema (Pydantic ProcessedDocumentResponse)</span>
+        <button id="inlineCopyBtn" class="btn-sm">Copy Raw JSON</button>
+      </div>
+      <pre class="json-viewer" id="jsonDisplay">{{ doc | tojson(indent=2) }}</pre>
+    </div>
+
+      </div><!-- /.data-pane -->
+    </div><!-- /.split-layout-container -->
+
+  </main>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Interactive Client Script -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Tab Switching
+      const tabBtns = document.querySelectorAll('.tab-btn');
+      const tabContents = document.querySelectorAll('.tab-content');
+
+      tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabBtns.forEach(b => b.classList.remove('active'));
+          tabContents.forEach(c => c.classList.remove('active'));
+
+          btn.classList.add('active');
+          const targetTabId = btn.getAttribute('data-tab');
+          const targetContent = document.getElementById(targetTabId);
+          if (targetContent) {
+            targetContent.classList.add('active');
+          }
+        });
+      });
+
+      // Toggle Document Preview Split Pane
+      const togglePreviewBtn = document.getElementById('togglePreviewBtn');
+      const togglePreviewText = document.getElementById('togglePreviewText');
+      const splitLayout = document.getElementById('splitLayout');
+
+      if (togglePreviewBtn && splitLayout) {
+        togglePreviewBtn.addEventListener('click', () => {
+          const isHidden = splitLayout.classList.toggle('no-preview');
+          togglePreviewText.textContent = isHidden ? 'Show Source Preview' : 'Hide Source Preview';
+        });
+      }
+
+      // Copy JSON Buttons
+      const rawJson = document.getElementById('jsonDisplay').textContent;
+      const copyJsonBtn = document.getElementById('copyJsonBtn');
+      const inlineCopyBtn = document.getElementById('inlineCopyBtn');
+      const downloadJsonBtn = document.getElementById('downloadJsonBtn');
+
+      function copyToClipboard() {
+        navigator.clipboard.writeText(rawJson).then(() => {
+          showToast('JSON copied to clipboard!');
+        }).catch(() => {
+          showToast('Failed to copy to clipboard', true);
+        });
+      }
+
+      if (copyJsonBtn) copyJsonBtn.addEventListener('click', copyToClipboard);
+      if (inlineCopyBtn) inlineCopyBtn.addEventListener('click', copyToClipboard);
+
+      // Export/Download JSON File
+      if (downloadJsonBtn) {
+        downloadJsonBtn.addEventListener('click', () => {
+          const blob = new Blob([rawJson], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = "{{ document_name }}_extracted_result.json";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast('Download initiated: {{ document_name }}_extracted_result.json');
+        });
+      }
+
+      // Toast Notification Helper
+      function showToast(message, isError = false) {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = `toast ${isError ? 'error' : ''}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translateY(10px)';
+          setTimeout(() => toast.remove(), 300);
+        }, 3500);
+      }
+    });
+  </script>
+</body>
+</html>

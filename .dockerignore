@@ -1,0 +1,13 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.vscode
+.git
+.agents
+.gemini
+venv
+.venv
+tests/__pycache__
+*.log
