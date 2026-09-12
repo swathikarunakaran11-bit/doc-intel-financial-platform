@@ -112,8 +112,15 @@ class OCRService:
         # 1. Try RapidOCR (high performance, self-contained ONNX engine)
         try:
             from rapidocr_onnxruntime import RapidOCR
+            import numpy as np
             engine = RapidOCR()
-            ocr_res, _ = engine(content)
+            try:
+                pil_img = Image.open(BytesIO(content)).convert("RGB")
+                img_np = np.array(pil_img)
+                ocr_res, _ = engine(img_np)
+            except Exception:
+                ocr_res, _ = engine(content)
+
             if ocr_res:
                 lines = [str(item[1]).strip() for item in ocr_res if item and len(item) > 1 and item[1]]
                 full_text = "\n".join(lines)

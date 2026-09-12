@@ -80,12 +80,13 @@ class ExtractionService:
                 r"(?:Invoice\s*(?:Number|No\.?|#)\s*[:\-]?\s*)([A-Za-z0-9\-_]+)",
                 r"(?:INV\s*[:\-#]?\s*)([A-Za-z0-9\-_]+)",
                 r"(?:Bill\s*(?:Number|No\.?|#)\s*[:\-]?\s*)([A-Za-z0-9\-_]+)",
-                r"(?:Receipt\s*(?:Number|No\.?|#)?\s*[:\-]?\s*)([A-Za-z0-9\-_]+)"
+                r"(?:Receipt\s*(?:Number|No\.?|#)?\s*[:\-]?\s*)([A-Za-z0-9\-_]+)",
+                r"(?:#\s*)([A-Za-z0-9\-_]{4,})"
             ]
         )
         if not inv_num_val:
-            for line, page in lines_with_page[:16]:
-                m_num = re.search(r"\b([A-Z0-9]{2,}[:\-]?[A-Z0-9]{4,}|\d{8,})\b", line)
+            for line, page in lines_with_page[:20]:
+                m_num = re.search(r"\b([A-Z0-9]{2,}[:\-]?[A-Z0-9]{4,}|\d{5,})\b", line)
                 if m_num and not any(k in line.lower() for k in ["tax", "gst", "tel", "fax", "date", "cashier", "receipt", "invoice", "price", "desc", "qty", "item"]):
                     inv_num_val = m_num.group(1)
                     inv_num_ev = {"source_text": line, "page_number": page}
@@ -96,16 +97,16 @@ class ExtractionService:
         inv_date_val, inv_date_ev, inv_date_conf = ExtractionService._search_field(
             lines_with_page,
             patterns=[
-                r"(?:Invoice\s*Date\s*[:\-]?\s*)(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\w+\s+\d{1,2},?\s+\d{4})",
-                r"(?:Date\s*[:\-]?\s*)(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\w+\s+\d{1,2},?\s+\d{4})"
+                r"(?:Invoice\s*Date\s*[:\-]?\s*)(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{1,2}-[A-Za-z]{3}-\d{2,4}|\w+\s+\d{1,2},?\s+\d{4})",
+                r"(?:Date\s*[:\-]?\s*)(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{1,2}-[A-Za-z]{3}-\d{2,4}|\w+\s+\d{1,2},?\s+\d{4})"
             ],
             label_patterns=[
-                r"(?:Invoice\s*Date|Date\s*of\s*issue|Date|Receipt\s*Date)"
+                r"(?:Invoice\s*Date|Date\s*of\s*issue|Date|Receipt\s*Date|Dated)"
             ]
         )
         if not inv_date_val:
-            for line, page in lines_with_page[:15]:
-                m_date = re.search(r"\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2})\b", line)
+            for line, page in lines_with_page[:50]:
+                m_date = re.search(r"\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}-[A-Za-z]{3}-\d{2,4})\b", line)
                 if m_date:
                     inv_date_val = m_date.group(1)
                     inv_date_ev = {"source_text": line, "page_number": page}
@@ -117,6 +118,14 @@ class ExtractionService:
             lines_with_page,
             prefixes=["vendor", "from", "seller", "billed by", "supplier"]
         )
+        if not vendor_val:
+            for line, page in lines_with_page:
+                m_v = re.search(r"(?:for\s+)([A-Za-z0-9\s]+(?:Enterprises|Pvt|Ltd|Inc|LLC|Corporation|Stores|Shop|Agency|Trading)[\w\s\-]*)", line, re.IGNORECASE)
+                if m_v:
+                    vendor_val = m_v.group(1).strip()
+                    vendor_ev = {"source_text": line, "page_number": page}
+                    vendor_conf = 0.92
+                    break
         if not vendor_val and lines_with_page:
             # Often first non-generic header line is the vendor
             candidate_line, c_page = lines_with_page[0]
@@ -137,7 +146,7 @@ class ExtractionService:
             lines_with_page, ["net worth", "subtotal", "sub total", "sub-total", "taxable amount", "net amount"]
         )
         tax_val, tax_ev, tax_conf = ExtractionService._search_amount(
-            lines_with_page, ["vat", "tax amount", "tax", "gst", "sales tax", "cgst", "sgst", "igst"]
+            lines_with_page, ["vat", "tax amount", "tax", "gst", "sales tax", "cgst", "sgst", "igst", "taxamount"]
         )
         discount_val, discount_ev, discount_conf = ExtractionService._search_amount(
             lines_with_page, ["discount", "discount applied", "less discount"]
@@ -705,7 +714,7 @@ class ExtractionService:
                                 if m2:
                                     val = m2.group(1).strip() if m2.groups() else m2.group(0).strip()
                                     return val, {"source_text": f"{line} {next_line}", "page_number": next_page}, 0.96
-                            if len(next_line.strip()) > 1:
+                            if not patterns and len(next_line.strip()) > 1:
                                 return next_line.strip(), {"source_text": f"{line} {next_line}", "page_number": next_page}, 0.95
         return None, None, 0.0
 
