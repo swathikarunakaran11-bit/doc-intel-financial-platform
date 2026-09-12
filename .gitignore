@@ -43,6 +43,10 @@ venv.bak/
 # Local uploads and temporary artifacts
 storage/uploads/*.tmp
 
+# Presentation Decks
+*.pptx
+*.ppt
+
 # IDE & OS files
 .vscode/
 .idea/
