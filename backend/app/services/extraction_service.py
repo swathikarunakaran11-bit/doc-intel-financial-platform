@@ -76,12 +76,13 @@ class ExtractionService:
         inv_num_val, inv_num_ev, inv_num_conf = ExtractionService._search_field(
             lines_with_page,
             patterns=[
-                r"(?:Invoice\s*no\.?[:\-]?\s*)([A-Za-z0-9\-_]+)",
-                r"(?:Invoice\s*(?:Number|No\.?|#)\s*[:\-]?\s*)([A-Za-z0-9\-_]+)",
-                r"(?:INV\s*[:\-#]?\s*)([A-Za-z0-9\-_]+)",
-                r"(?:Bill\s*(?:Number|No\.?|#)\s*[:\-]?\s*)([A-Za-z0-9\-_]+)",
-                r"(?:Receipt\s*(?:Number|No\.?|#)?\s*[:\-]?\s*)([A-Za-z0-9\-_]+)",
-                r"(?:#\s*)([A-Za-z0-9\-_]{4,})"
+                r"\bInvoice\s*#\s*[:\-]?\s*([A-Za-z0-9\-_]+)",
+                r"\bInvoice\s*no\.?\s*[:\-]?\s*([A-Za-z0-9\-_]+)",
+                r"\bInvoice\s*(?:Number|No)\s*[:\-]?\s*([A-Za-z0-9\-_]+)",
+                r"\bINV\s*[:\-#]?\s*([A-Za-z0-9\-_]+)",
+                r"\bBill\s*(?:Number|No\.?|#)\s*[:\-]?\s*([A-Za-z0-9\-_]+)",
+                r"\bReceipt\s*(?:Number|No\.?|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]+)",
+                r"#\s*([A-Za-z0-9\-_]{4,})"
             ]
         )
         if not inv_num_val:
@@ -140,13 +141,21 @@ class ExtractionService:
             prefixes=["customer", "to", "bill to", "billed to", "client", "buyer"],
             exclude=vendor_val
         )
+        if not cust_val and len(lines_with_page) > 4:
+            for l, p in lines_with_page[2:8]:
+                if any(k in l.lower() for k in ["group", "inc", "corp", "ltd", "gmbh", "llc"]):
+                    if not vendor_val or l.lower() not in vendor_val.lower():
+                        cust_val = l
+                        cust_ev = {"source_text": l, "page_number": p}
+                        cust_conf = 0.92
+                        break
 
         # 6. Financial summary amounts
         subtotal_val, subtotal_ev, subtotal_conf = ExtractionService._search_amount(
             lines_with_page, ["net worth", "subtotal", "sub total", "sub-total", "taxable amount", "net amount"]
         )
         tax_val, tax_ev, tax_conf = ExtractionService._search_amount(
-            lines_with_page, ["vat", "tax amount", "tax", "gst", "sales tax", "cgst", "sgst", "igst", "taxamount"]
+            lines_with_page, ["sales tax", "vat", "tax amount", "tax", "gst", "cgst", "sgst", "igst", "taxamount"]
         )
         discount_val, discount_ev, discount_conf = ExtractionService._search_amount(
             lines_with_page, ["discount", "discount applied", "less discount"]
@@ -155,8 +164,12 @@ class ExtractionService:
             discount_val = 0.0
             discount_conf = 0.95
 
+        shipping_val, shipping_ev, shipping_conf = ExtractionService._search_amount(
+            lines_with_page, ["shipping and handling", "shipping & handling", "shipping fee", "shipping", "freight", "handling", "delivery fee", "delivery charge"]
+        )
+
         total_val, total_ev, total_conf = ExtractionService._search_amount(
-            lines_with_page, ["gross worth", "total amt", "total amount", "total due", "grand total", "invoice total", "amount due", "balance due", "total"]
+            lines_with_page, ["total due", "gross worth", "total amt", "total amount", "grand total", "invoice total", "amount due", "balance due", "total"]
         )
 
         cash_paid_val, cash_paid_ev, cash_paid_conf = ExtractionService._search_amount(
@@ -166,42 +179,42 @@ class ExtractionService:
             lines_with_page, ["change due", "change", "cash change"]
         )
 
-        # Smart financial summary reconciliation from bottom summary lines
-        bottom_amounts = []
-        for line, page in lines_with_page[-20:]:
-            nums = ExtractionService._extract_numbers_from_line(line)
-            if nums:
-                bottom_amounts.extend([(n, line, page) for n in nums])
+        # Smart financial summary reconciliation from bottom summary lines ONLY if total_val is missing
+        if total_val is None:
+            bottom_amounts = []
+            for line, page in lines_with_page[-20:]:
+                nums = ExtractionService._extract_numbers_from_line(line)
+                if nums:
+                    bottom_amounts.extend([(n, line, page) for n in nums])
 
-        reconciled = False
-        for i in range(len(bottom_amounts)):
-            if reconciled:
-                break
-            for j in range(len(bottom_amounts)):
-                if i != j:
-                    val_i, line_i, page_i = bottom_amounts[i]
-                    val_j, line_j, page_j = bottom_amounts[j]
-                    s = round(val_i + val_j, 2)
-                    for k in range(len(bottom_amounts)):
-                        if k != i and k != j:
-                            val_k, line_k, page_k = bottom_amounts[k]
-                            # Avoid picking up tender payment as invoice total
-                            if cash_paid_val is not None and abs(val_k - cash_paid_val) <= 0.05:
-                                continue
-                            if abs(s - val_k) <= 0.05 and val_k > max(val_i, val_j) and val_k > 0:
-                                subtotal_val = max(val_i, val_j)
-                                subtotal_ev = {"source_text": line_i if val_i >= val_j else line_j, "page_number": page_i}
-                                subtotal_conf = 0.99
-                                tax_val = min(val_i, val_j)
-                                tax_ev = {"source_text": line_j if val_i >= val_j else line_i, "page_number": page_j}
-                                tax_conf = 0.99
-                                total_val = val_k
-                                total_ev = {"source_text": line_k, "page_number": page_k}
-                                total_conf = 0.99
-                                reconciled = True
-                                break
-                    if reconciled:
-                        break
+            reconciled = False
+            for i in range(len(bottom_amounts)):
+                if reconciled:
+                    break
+                for j in range(len(bottom_amounts)):
+                    if i != j:
+                        val_i, line_i, page_i = bottom_amounts[i]
+                        val_j, line_j, page_j = bottom_amounts[j]
+                        s = round(val_i + val_j, 2)
+                        for k in range(len(bottom_amounts)):
+                            if k != i and k != j:
+                                val_k, line_k, page_k = bottom_amounts[k]
+                                if cash_paid_val is not None and abs(val_k - cash_paid_val) <= 0.05:
+                                    continue
+                                if abs(s - val_k) <= 0.05 and val_k > max(val_i, val_j) and val_k > 0:
+                                    subtotal_val = max(val_i, val_j)
+                                    subtotal_ev = {"source_text": line_i if val_i >= val_j else line_j, "page_number": page_i}
+                                    subtotal_conf = 0.99
+                                    tax_val = min(val_i, val_j)
+                                    tax_ev = {"source_text": line_j if val_i >= val_j else line_i, "page_number": page_j}
+                                    tax_conf = 0.99
+                                    total_val = val_k
+                                    total_ev = {"source_text": line_k, "page_number": page_k}
+                                    total_conf = 0.99
+                                    reconciled = True
+                                    break
+                        if reconciled:
+                            break
 
         # If total_val is still missing or was erroneously assigned cash_paid_val, use cash_paid - change_due
         if (total_val is None or (cash_paid_val is not None and abs(total_val - cash_paid_val) <= 0.05)) and cash_paid_val and change_val:
@@ -228,6 +241,7 @@ class ExtractionService:
             "subtotal": {"value": subtotal_val, "confidence": subtotal_conf, "evidence": subtotal_ev},
             "tax_amount": {"value": tax_val, "confidence": tax_conf, "evidence": tax_ev},
             "discount": {"value": discount_val, "confidence": discount_conf, "evidence": discount_ev},
+            "shipping_amount": {"value": shipping_val, "confidence": shipping_conf, "evidence": shipping_ev} if shipping_val is not None else None,
             "total_amount": {"value": total_val, "confidence": total_conf, "evidence": total_ev},
             "cash_paid": {"value": cash_paid_val, "confidence": cash_paid_conf, "evidence": cash_paid_ev} if cash_paid_val is not None else None,
             "change_due": {"value": change_val, "confidence": change_conf, "evidence": change_ev} if change_val is not None else None,
@@ -702,7 +716,7 @@ class ExtractionService:
                 m = re.search(pat, line, re.IGNORECASE)
                 if m:
                     val = m.group(1).strip() if m.groups() else m.group(0).strip()
-                    if val:
+                    if val and "@" not in val and not val.endswith((".com", ".ca", ".net", ".org")) and val.lower() not in ["oice", "details", "date", "number"]:
                         return val, {"source_text": line, "page_number": page}, 0.98
             if label_patterns:
                 for l_pat in label_patterns:
@@ -713,7 +727,8 @@ class ExtractionService:
                                 m2 = re.search(pat, next_line, re.IGNORECASE)
                                 if m2:
                                     val = m2.group(1).strip() if m2.groups() else m2.group(0).strip()
-                                    return val, {"source_text": f"{line} {next_line}", "page_number": next_page}, 0.96
+                                    if val and "@" not in val and not val.endswith((".com", ".ca", ".net", ".org")) and val.lower() not in ["oice", "details", "date", "number"]:
+                                        return val, {"source_text": f"{line} {next_line}", "page_number": next_page}, 0.96
                             if not patterns and len(next_line.strip()) > 1:
                                 return next_line.strip(), {"source_text": f"{line} {next_line}", "page_number": next_page}, 0.95
         return None, None, 0.0
@@ -750,23 +765,39 @@ class ExtractionService:
 
     @staticmethod
     def _search_amount(lines_with_page: List[Tuple[str, int]], labels: List[str]) -> Tuple[Optional[float], Optional[Dict], float]:
-        for idx, (line, page) in enumerate(lines_with_page):
-            line_low = line.lower().strip()
-            if "tax id" in line_low or "tax ld" in line_low or "gstno" in line_low:
-                continue
-            for label in labels:
-                pattern = rf"\b{re.escape(label)}\b"
+        for label in labels:
+            pattern = rf"\b{re.escape(label)}\b"
+            for idx, (line, page) in enumerate(lines_with_page):
+                line_low = line.lower().strip()
+                if "tax id" in line_low or "tax ld" in line_low or "gstno" in line_low:
+                    continue
                 if re.search(pattern, line_low):
+                    # If label is generic 'total', avoid table header rows
+                    if label == "total":
+                        if any(k in line_low for k in ["quantity", "qty", "price", "desc", "description", "item"]):
+                            continue
+                        if idx + 1 < len(lines_with_page):
+                            next_low = lines_with_page[idx + 1][0].lower()
+                            if any(k in next_low for k in ["quantity", "price", "description"]):
+                                continue
+                        if idx > 0:
+                            prev_low = lines_with_page[idx - 1][0].lower()
+                            if any(k in prev_low for k in ["quantity", "price", "description"]):
+                                continue
+
                     # 1. Check same line
                     nums = ExtractionService._extract_numbers_from_line(line)
                     if nums:
                         return nums[-1], {"source_text": line, "page_number": page}, 0.98
-                    # 2. Check next few lines (up to 6 lines ahead)
-                    for next_idx in range(idx + 1, min(idx + 7, len(lines_with_page))):
+
+                    # 2. Check next few lines (up to 4 lines ahead)
+                    for next_idx in range(idx + 1, min(idx + 5, len(lines_with_page))):
                         next_line, next_page = lines_with_page[next_idx]
                         next_low = next_line.lower().strip()
-                        if "tax id" in next_low or "tax ld" in next_low:
-                            continue
+                        if any(k in next_low for k in ["tax id", "tax ld", "tel", "invoice details", "terms"]):
+                            break
+                        if any(re.search(rf"\b{re.escape(k)}\b", next_low) for k in ["subtotal", "total due", "sales tax", "shipping", "grand total"]):
+                            break
                         next_nums = ExtractionService._extract_numbers_from_line(next_line)
                         if next_nums:
                             return next_nums[-1], {"source_text": f"{line} -> {next_line}", "page_number": next_page}, 0.95

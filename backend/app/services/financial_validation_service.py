@@ -115,23 +115,24 @@ class FinancialValidationService:
                 "description": "No line items available in document to validate sum."
             })
 
-        # Check 3: Invoice Total Reconciliation (Subtotal + Tax - Discount ≈ Total)
+        shipping = self._get_num(data.get("shipping_amount")) or 0.0
+
+        # Check 3: Invoice Total Reconciliation (Subtotal + Tax + Shipping - Discount ≈ Total)
         if subtotal is not None and total_amount is not None:
             if is_tax_inclusive:
-                # If tax is inclusive, subtotal already equals total or total = subtotal - discount
-                calc_total = round(subtotal - discount, 2)
-                formula_str = "subtotal - discount (tax inclusive)"
+                calc_total = round(subtotal + shipping - discount, 2)
+                formula_str = "subtotal + shipping - discount (tax inclusive)" if shipping > 0 else "subtotal - discount (tax inclusive)"
             else:
-                calc_total = round(subtotal + tax_amount - discount, 2)
-                formula_str = "subtotal + tax_amount - discount"
+                calc_total = round(subtotal + tax_amount + shipping - discount, 2)
+                formula_str = "subtotal + tax_amount + shipping - discount" if shipping > 0 else "subtotal + tax_amount - discount"
 
             var = round(abs(calc_total - total_amount), 2)
             # Also handle alternative where reported subtotal was tax-exclusive or tax already included
             if var > self.tolerance and not is_tax_inclusive:
-                alt_calc = round(subtotal - discount, 2)
+                alt_calc = round(subtotal + shipping - discount, 2)
                 if abs(alt_calc - total_amount) <= self.tolerance:
                     calc_total = alt_calc
-                    formula_str = "subtotal - discount (detected tax-inclusive)"
+                    formula_str = "subtotal + shipping - discount (detected tax-inclusive)" if shipping > 0 else "subtotal - discount (detected tax-inclusive)"
                     var = 0.0
 
             status = "PASS" if var <= self.tolerance else "FAIL"
@@ -140,12 +141,12 @@ class FinancialValidationService:
             checks.append({
                 "name": "invoice_total_check",
                 "formula": formula_str,
-                "operands": {"subtotal": subtotal, "tax_amount": tax_amount, "discount": discount},
+                "operands": {"subtotal": subtotal, "tax_amount": tax_amount, "shipping": shipping, "discount": discount},
                 "calculated_value": calc_total,
                 "reported_value": total_amount,
                 "variance": var,
                 "status": status,
-                "description": "Reconciliation of subtotal, tax and discount against total amount"
+                "description": "Reconciliation of subtotal, tax, shipping and discount against total amount"
             })
         else:
             checks.append({

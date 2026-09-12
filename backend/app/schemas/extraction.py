@@ -27,6 +27,7 @@ class InvoiceExtractedData(BaseModel):
     subtotal: ExtractedField
     tax_amount: ExtractedField
     discount: ExtractedField
+    shipping_amount: Optional[ExtractedField] = None
     total_amount: ExtractedField
     cash_paid: Optional[ExtractedField] = None
     change_due: Optional[ExtractedField] = None
