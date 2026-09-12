@@ -36,12 +36,12 @@ venv.bak/
 
 # Database files
 *.db
+!doc_intelligence.db
 *.sqlite
 *.sqlite3
 
 # Local uploads and temporary artifacts
-storage/uploads/*
-!storage/uploads/.gitkeep
+storage/uploads/*.tmp
 
 # IDE & OS files
 .vscode/

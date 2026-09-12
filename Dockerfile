@@ -26,9 +26,8 @@ COPY frontend ./frontend
 COPY scripts ./scripts
 COPY run.py .
 COPY pytest.ini .
-
-# Create persistent storage directories
-RUN mkdir -p storage/uploads
+COPY doc_intelligence.db .
+COPY storage ./storage
 
 # Expose server port
 EXPOSE 8000

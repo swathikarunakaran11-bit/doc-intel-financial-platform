@@ -501,16 +501,20 @@
             body: formData
           });
 
-          const data = await res.json();
-          progressFill.style.width = '100%';
-
           if (!res.ok) {
-            const errDetail = (data && data.error && data.error.message) || 'Document processing failed.';
+            let errDetail = `Server returned HTTP ${res.status}`;
+            try {
+              const errData = await res.json();
+              if (errData && errData.error && errData.error.message) errDetail = errData.error.message;
+            } catch (_) {}
             showToast(errDetail, true);
             uploadProgress.style.display = 'none';
             submitBtn.disabled = false;
             return;
           }
+
+          const data = await res.json();
+          progressFill.style.width = '100%';
 
           showToast(`Successfully processed "${file.name}" with status ${data.processing_status}!`);
           

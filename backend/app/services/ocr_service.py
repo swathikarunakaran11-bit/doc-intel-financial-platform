@@ -80,7 +80,9 @@ class OCRService:
 
             for idx in range(min(num_pages, 5)):  # Process up to 5 pages per pre-flight limit
                 page = pdf[idx]
-                image = page.render(scale=2.0).to_pil()
+                image = page.render(scale=1.0).to_pil()
+                if image.width > 1200 or image.height > 1200:
+                    image.thumbnail((1200, 1200))
                 img_np = np.array(image)
                 ocr_res, _ = engine(img_np)
 
@@ -116,6 +118,8 @@ class OCRService:
             engine = RapidOCR()
             try:
                 pil_img = Image.open(BytesIO(content)).convert("RGB")
+                if pil_img.width > 1200 or pil_img.height > 1200:
+                    pil_img.thumbnail((1200, 1200))
                 img_np = np.array(pil_img)
                 ocr_res, _ = engine(img_np)
             except Exception:
